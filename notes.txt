@@ -1,0 +1,3 @@
+Product Name: Memory Trainer
+Organization ID: com.EGP
+Bundle ID: com.EGP.Memory Trainer
