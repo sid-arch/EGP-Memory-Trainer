@@ -527,7 +527,7 @@ struct TrainerView: View {
             wrong += 1
             digitCount += 1
             
-            if wrong >= 10 {
+            if wrong >= 100 {
                 endSession(auto: true)
                 return
             }
@@ -543,7 +543,7 @@ struct TrainerView: View {
             let checkIndex = digitCount + i
             if d == targetDigits[checkIndex] {
                 
-                // Add missed digits as "recognition gaps" 
+                // Add missed digits as "recognition gaps"
                 for missedIndex in digitCount..<checkIndex {
                     let missedDigit = targetDigits[missedIndex]
                     transcript.append(GradedToken(kind: .digit(d: missedDigit, correct: false)))
