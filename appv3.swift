@@ -55,6 +55,7 @@ enum ConstantKind: String, Codable, CaseIterable, Identifiable {
 
 enum TokenKind: Codable {
     case digit(d: String, correct: Bool)
+    case missed(d: String) // render as grey + underlined
     case pause // render as "–" in orange
 }
 
@@ -306,6 +307,7 @@ struct TrainerView: View {
     @State private var transcript: [GradedToken] = []
     @State private var correct = 0
     @State private var wrong = 0
+    @State private var missed = 0
     @State private var pauses = 0
     @State private var isSessionActive = false
 
@@ -410,8 +412,10 @@ struct TrainerView: View {
             HStack(spacing: 28) {
                 StatBox(title: "Correct", value: "\(correct)", color: .green)
                 StatBox(title: "Wrong",   value: "\(wrong)",   color: .red)
+                StatBox(title: "Miss",    value: "\(missed)",  color: .gray)
                 StatBox(title: "Pauses",  value: "\(pauses)",  color: .orange)
-                let acc = digitCount > 0 ? Int(round(Double(correct)/Double(digitCount)*100)) : 0
+                let totalAttempted = correct + wrong
+                let acc = totalAttempted > 0 ? Int(round(Double(correct)/Double(totalAttempted)*100)) : 0
                 StatBox(title: "Accuracy", value: "\(acc)%", color: .blue)
             }
             .padding(.top, 6)
@@ -460,6 +464,7 @@ struct TrainerView: View {
         transcript.removeAll()
         correct = 0
         wrong = 0
+        missed = 0
         pauses = 0
         lastDigitTime = nil
         sessionStart = Date()
@@ -500,13 +505,14 @@ struct TrainerView: View {
         transcript.removeAll()
         correct = 0
         wrong = 0
+        missed = 0
         pauses = 0
         lastDigitTime = nil
         sessionStart = nil
         bottomAnchor = UUID()
     }
 
-    // MARK: - Processing with Fuzzy Matching
+    // MARK: - Processing with Skip-Ahead for Missed Digits
 
     private func processIncomingDigit(_ d: String) {
         guard isSessionActive else { return }
@@ -527,15 +533,15 @@ struct TrainerView: View {
             wrong += 1
             digitCount += 1
             
-            if wrong >= 100 {
+            if wrong >= 10 {
                 endSession(auto: true)
                 return
             }
             return
         }
         
-        // Fuzzy matching with 2-digit lookahead window
-        let lookAheadWindow = 2
+        // Skip-ahead logic: look ahead up to 3 positions to find the digit
+        let lookAheadWindow = 3
         let maxLookAhead = min(lookAheadWindow, targetDigits.count - digitCount)
         var found = false
         
@@ -543,12 +549,11 @@ struct TrainerView: View {
             let checkIndex = digitCount + i
             if d == targetDigits[checkIndex] {
                 
-                // Add missed digits as "recognition gaps"
+                // Mark any skipped digits as "missed" (grey + underlined)
                 for missedIndex in digitCount..<checkIndex {
                     let missedDigit = targetDigits[missedIndex]
-                    transcript.append(GradedToken(kind: .digit(d: missedDigit, correct: false)))
-                    // Count these as wrong in stats but don't trigger session end
-                    wrong += 1
+                    transcript.append(GradedToken(kind: .missed(d: missedDigit)))
+                    missed += 1
                 }
                 
                 // Mark current digit as correct
@@ -566,7 +571,7 @@ struct TrainerView: View {
             wrong += 1
             digitCount += 1
             
-            // Auto-end only on genuine errors, not recognition gaps
+            // Auto-end on 10 wrong
             if wrong >= 10 {
                 endSession(auto: true)
                 return
@@ -583,6 +588,11 @@ struct TrainerView: View {
             case .digit(let d, let ok):
                 var chunk = AttributedString(d)
                 chunk.foregroundColor = ok ? .green : .red
+                result.append(chunk)
+            case .missed(let d):
+                var chunk = AttributedString(d)
+                chunk.foregroundColor = .gray
+                chunk.underlineStyle = .single
                 result.append(chunk)
             case .pause:
                 var dash = AttributedString("–")
@@ -669,6 +679,11 @@ struct ResultsView: View {
             case .digit(let d, let ok):
                 var chunk = AttributedString(d)
                 chunk.foregroundColor = ok ? .green : .red
+                result.append(chunk)
+            case .missed(let d):
+                var chunk = AttributedString(d)
+                chunk.foregroundColor = .gray
+                chunk.underlineStyle = .single
                 result.append(chunk)
             case .pause:
                 var dash = AttributedString("–")
