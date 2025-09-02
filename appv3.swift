@@ -508,43 +508,54 @@ struct TrainerView: View {
     // MARK: - Processing
 
     private func processIncomingDigit(_ d: String) {
-        guard isSessionActive else { return }
-
-        // Pause detection
-        let now = Date()
-        if let last = lastDigitTime, now.timeIntervalSince(last) > PAUSE_THRESHOLD {
-            transcript.append(GradedToken(kind: .pause))
-            pauses += 1
-        }
-        lastDigitTime = now
-
-        // Compare to target
-        let idx = digitCount
-        if idx < targetDigits.count {
-            let expected = targetDigits[idx]
-            if d == expected {
-                transcript.append(GradedToken(kind: .digit(d: d, correct: true)))
-                correct += 1
-            } else {
-                transcript.append(GradedToken(kind: .digit(d: d, correct: false)))
-                wrong += 1
-                if wrong >= 10 {
-                    endSession(auto: true)
-                    return
-                }
-            }
-        } else {
-            // Past target length (optional policy: treat as wrong)
-            transcript.append(GradedToken(kind: .digit(d: d, correct: false)))
-            wrong += 1
-            if wrong >= 100 {
-                endSession(auto: true)
-                return
-            }
-        }
-
-        digitCount += 1
+    guard isSessionActive else { return }
+    
+    let now = Date()
+    
+    // Pause detection first
+    if let last = lastDigitTime, now.timeIntervalSince(last) > PAUSE_THRESHOLD {
+        transcript.append(GradedToken(kind: .pause))
+        pauses += 1
     }
+    lastDigitTime = now
+    
+    // Fuzzy matching with 2-digit lookahead window
+    let lookAheadWindow = 2
+    var found = false
+    
+    for i in 0..<min(lookAheadWindow, targetDigits.count - digitCount) {
+        let checkIndex = digitCount + i
+        if checkIndex < targetDigits.count && d == targetDigits[checkIndex] {
+            
+            // Add missed digits as "recognition gaps" (different from user errors)
+            for missedIndex in digitCount..<checkIndex {
+                let missedDigit = targetDigits[missedIndex]
+                transcript.append(GradedToken(kind: .digit(d: missedDigit, correct: false)))
+                // Don't count these against the "10 wrong" limit - they're tech issues
+            }
+            
+            // Mark current digit as correct
+            transcript.append(GradedToken(kind: .digit(d: d, correct: true)))
+            correct += 1
+            digitCount = checkIndex + 1
+            found = true
+            break
+        }
+    }
+    
+    if !found {
+        // This is a genuine user error
+        transcript.append(GradedToken(kind: .digit(d: d, correct: false)))
+        wrong += 1
+        digitCount += 1
+        
+        // Auto-end only on genuine errors, not recognition gaps
+        if wrong >= 10 {
+            endSession(auto: true)
+            return
+        }
+    }
+}
 
     // MARK: - Transcript rendering (AttributedString so it wraps downward)
 
